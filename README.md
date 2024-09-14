@@ -28,8 +28,9 @@ dp.include_router(callback_manager.router)
 
 #Инициализация базы данных (не забудьте вызвать это перед началом обработки)
 await callback_manager.init_db()
+```
 # Создание обработчиков с использованием декоратора @callback_manager.callback_handler()
-from aiogram import types
+```from aiogram import types
 
 # Определение обработчика для кнопки
 @callback_manager.callback_handler()
