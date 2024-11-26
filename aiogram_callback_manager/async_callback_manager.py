@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict, Optional, List
 
 
 from .base_db_storage import SQLiteStorage,CallbackDataStorage
+from .messages import MockMessage
 
 
 class AsyncCallbackManager:
@@ -69,12 +70,12 @@ class AsyncCallbackManager:
         return data_hash
 
     async def _load_callback_data(self, data_hash: str) -> Optional[Dict[str, Any]]:
-        data_bytes=await self.storage.load(data_hash)
+        data_bytes = await self.storage.load(data_hash)
         if data_bytes:
             if self.use_json:
                 data = json.loads(data_bytes.decode())
             else:
-                data = pickle.loads(data_bytes)
+                data = pickle.loads(data_bytes, encoding="utf-8")
             return data
         return None
 
@@ -94,18 +95,19 @@ class AsyncCallbackManager:
         # Загрузка данных из базы по хэшу
         data = await self._load_callback_data(data_hash)
         if data is None:
-            await callback_query.answer("Данные устарели или недействительны.", show_alert=True)
+            await callback_query.answer(MockMessage.DataInvalid, show_alert=True)
             return
 
         handler_id = data.get('handler_id')
         handler = self._handlers.get(handler_id)
         if handler is None:
-            await callback_query.answer("Обработчик не найден.", show_alert=True)
+            await callback_query.answer(MockMessage.HandlerNotFound, show_alert=True)
             return
         # Получение аргументов
         args = data.get('args', [])
         kwargs = data.get('kwargs', {})
         back_btn_data = data.get('back_btn')
+
         # Вызов обработчика
         try:
             t = inspect.signature(handler)
@@ -114,10 +116,10 @@ class AsyncCallbackManager:
             await handler(callback_query, *args, **kwargs)
         except Exception as e:
             traceback.print_exc()
-            await callback_query.answer("Произошла ошибка при обработке запроса.", show_alert=True)
+            await callback_query.answer(MockMessage.RequestProcessingError, show_alert=True)
 
     def register_handler(self, func: Callable):
-        handler_id = str(uuid.uuid4())
+        handler_id = self._generate_handler_id()
         func.handler_id = handler_id
         self._handlers[handler_id] = func
         return func
@@ -129,7 +131,7 @@ class AsyncCallbackManager:
                 await func(callback_query, *args, **kwargs)
 
             # Генерируем уникальный идентификатор для обработчика
-            handler_id = str(uuid.uuid4())
+            handler_id = self._generate_handler_id()
             wrapper.handler_id = handler_id
 
             # Сохраняем обработчик в словаре с использованием handler_id
@@ -159,8 +161,14 @@ class AsyncCallbackManager:
             return back_btn.data
         raise TypeError("Not implemented type")
 
-    async def create_button(self, text: str, func: Callable, back_btn: Optional[str|types.CallbackQuery|types.Message|InlineKeyboardButton] = None, *args,
-                            **kwargs) -> InlineKeyboardButton:
+    async def create_button(
+            self,
+            text: str,
+            func: Callable,
+            back_btn: Optional[str|types.CallbackQuery|types.Message|InlineKeyboardButton] = None,
+            *args,
+            **kwargs
+    ) -> InlineKeyboardButton:
         """
               Создает InlineKeyboardButton с обработчиком.
 
@@ -168,7 +176,8 @@ class AsyncCallbackManager:
               :param func: Функция-обработчик.
               :param back_btn: Кнопка "Назад" или данные для нее.
               :return: Экземпляр InlineKeyboardButton.
-              """
+        """
+
         data = {
             'handler_id': getattr(func, 'handler_id', None),
             'args': args,
@@ -203,8 +212,16 @@ class AsyncCallbackManager:
 
         return kb
 
-    async def create_paginate_buttons(self, func: Callable, total_pages: int, current_page: int,
-                                      back_btn: Optional[str] = None, max_buttons = 5, *args, **kwargs) -> List[InlineKeyboardButton]:
+    async def create_paginate_buttons(
+            self,
+            *args,
+            func: Callable,
+            total_pages: int,
+            current_page: int,
+            back_btn: Optional[str] = None,
+            max_buttons = 5,
+            **kwargs
+    ) -> List[InlineKeyboardButton]:
         buttons = []
 
         # Определяем диапазон страниц для отображения
@@ -235,7 +252,6 @@ class AsyncCallbackManager:
                     **kwargs_copy
                 )
                 buttons.append(page_button)
-
 
         return buttons
 

@@ -47,7 +47,7 @@ products =lambda :[Product(name=f"Товар {i}",price=random.randint(100,10000
 shops= [Shop(name=f"Магазин {i}",products=products()) for i in range(1, 21)]
 # Обработчик списка товаров с пагинацией
 @callback_manager.callback_handler()
-async def product_list(callback_query: types.CallbackQuery, element:Shop,page: int = 1,back_btn=None):
+async def product_list(callback_query: types.CallbackQuery, element: Shop,page: int = 1,back_btn=None):
     product_list_partial = functools.partial(product_list, element=element)
     product_list_partial = callback_manager.register_handler(product_list_partial)
 
