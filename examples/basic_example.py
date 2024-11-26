@@ -14,7 +14,6 @@ from dotenv import load_dotenv
 
 from aiogram_callback_manager import AsyncCallbackManager
 
-
 load_dotenv()
 
 API_TOKEN = os.environ['API_TOKEN']
@@ -33,7 +32,6 @@ class Product:
 
 # Пример данных
 products = [Product(name=f"Товар {i}", price=random.randint(100, 1000000)) for i in range(1, 101)]
-
 
 
 @dp.message(Command('start'))
