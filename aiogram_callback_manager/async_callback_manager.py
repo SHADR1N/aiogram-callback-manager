@@ -137,6 +137,14 @@ class AsyncCallbackManager:
             return wrapper
 
         return decorator
+
+    def _generate_handler_id(self):
+        while True:
+            handler_id = str(uuid.uuid4())
+            if handler_id not in self._handlers:
+                break
+        return handler_id
+
     @staticmethod
     def _extract_callback_data(back_btn):
         if not back_btn:
