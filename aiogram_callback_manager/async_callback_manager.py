@@ -47,6 +47,7 @@ class AsyncCallbackManager:
         async def noop_callback(callback_query: CallbackQuery):
             await callback_query.answer()
         self.router.callback_query.register(noop_callback, lambda c: c.data == "noop")
+        asyncio.get_event_loop().run_until_complete(self.init_db())
 
     async def init_db(self):
         await self.storage.init_db()
