@@ -7,6 +7,8 @@ from typing import Type
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import InlineKeyboardMarkup
 from dotenv import load_dotenv
 
@@ -33,14 +35,15 @@ class Product:
 products = [Product(name=f"Товар {i}", price=random.randint(100, 1000000)) for i in range(1, 101)]
 
 
+
 @dp.message(Command('start'))
-async def start_command(message: types.Message):
+async def start_command(message: types.Message, state: FSMContext):
     btn = await callback_manager.create_button('Товары', "product_list")
     await message.answer('Меню', reply_markup=InlineKeyboardMarkup(inline_keyboard=[[btn]]))
 
 
 @callback_manager.callback_handler()
-async def product_list(callback_query: types.CallbackQuery, page: int = 1):
+async def product_list(callback_query: types.CallbackQuery, page: int = 1, back_btn=None):
     items_per_page = 10
     total_pages = (len(products) + items_per_page - 1) // items_per_page
     page = max(1, min(page, total_pages))
@@ -74,10 +77,9 @@ async def product_detail(callback_query: types.CallbackQuery, product: dict):
 
 
 async def main():
-    await callback_manager.init_db()
     await dp.start_polling(bot)
 
 
 if __name__ == '__main__':
-    logging.getLogger().setLevel(logging.DEBUG)
+    logging.getLogger("aiogram").setLevel(logging.INFO)
     asyncio.run(main())

@@ -191,29 +191,56 @@ class AsyncCallbackManager:
         callback_data = f"cb_{data_hash}"
         return InlineKeyboardButton(text=text, callback_data=callback_data)
 
-    async def create_buttons(self, objects: List, display_func: Callable, button_func: Callable,
-                             text_func: Callable = str, objects_per_page=5, page=1, row=False,
-                             back_btn: Optional[str | CallbackQuery | types.Message] = None, *args,
-                             **kwargs) -> InlineKeyboardMarkup:
-        kb = []
+    async def create_buttons(
+            self,
+            objects: List,
+            display_func: Callable,
+            button_func: Callable,
+            text_func: Callable = str,
+            objects_per_page=5,
+            page=1,
+            row=False,
+            back_btn: Optional[str | CallbackQuery | types.Message] = None,
+            *args,
+            **kwargs
+    ) -> List[InlineKeyboardMarkup]:
+        keyboards = []
+
         current_objects = objects[(page - 1) * objects_per_page:page * objects_per_page]
-        paginat_btns = asyncio.create_task(
-            self.create_paginate_buttons(display_func, ceil(len(objects) / objects_per_page), page, back_btn=back_btn, *args,
-                                         **kwargs))
+        pagination_buttons = asyncio.create_task(
+            self.create_paginate_buttons(
+                func=display_func,
+                total_pages=ceil(len(objects) / objects_per_page),
+                current_page=page,
+                back_btn=back_btn,
+                *args,
+                **kwargs
+            )
+        )
+
         tasks = []
         for obj in current_objects:
             kwargs_copy = kwargs.copy()
             kwargs_copy['element'] = obj
-            tasks.append(asyncio.create_task(
-                self.create_button(text_func(obj), button_func, back_btn=back_btn, *args, **kwargs_copy)))
+            tasks.append(
+                asyncio.create_task(
+                    self.create_button(
+                        text=text_func(obj),
+                        func=button_func,
+                        back_btn=back_btn,
+                        *args,
+                        **kwargs_copy
+                    )
+                )
+            )
 
-        btns = await asyncio.gather(*tasks)
-        for btn in btns:
+        buttons = await asyncio.gather(*tasks)
+        for btn in buttons:
             elem = [btn] if not row else btn
-            kb.append(elem)
-        kb.append(await paginat_btns)
+            keyboards.append(elem)
 
-        return kb
+        keyboards.append(await pagination_buttons)
+        return keyboards
 
     async def create_paginate_buttons(
             self,
@@ -248,6 +275,7 @@ class AsyncCallbackManager:
                 kwargs_copy['page'] = page
                 if back_btn is not None:
                     kwargs_copy['back_btn'] = back_btn  # Передаём back_btn в kwargs
+
                 page_button = await self.create_button(
                     text=str(page),
                     func=func,

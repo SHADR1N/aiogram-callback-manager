@@ -8,8 +8,12 @@ from typing import List
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from dotenv import load_dotenv
+
 from aiogram_callback_manager import AsyncCallbackManager
 
+
+load_dotenv()
 API_TOKEN = os.environ['API_TOKEN']
 
 bot = Bot(token=API_TOKEN)
@@ -21,8 +25,6 @@ callback_manager = AsyncCallbackManager(use_json=False)
 # Регистрация внутреннего роутера менеджера
 dp.include_router(callback_manager.router)
 
-# Инициализация базы данных
-asyncio.get_event_loop().run_until_complete(callback_manager.init_db())
 
 class Product:
     def __init__(self,name:str,price:int):
@@ -45,6 +47,8 @@ class Shop:
 # Пример данных
 products =lambda :[Product(name=f"Товар {i}",price=random.randint(100,1000000)) for i in range(1, 41)]  # Список из 100 товаров
 shops= [Shop(name=f"Магазин {i}",products=products()) for i in range(1, 21)]
+
+
 # Обработчик списка товаров с пагинацией
 @callback_manager.callback_handler()
 async def product_list(callback_query: types.CallbackQuery, element: Shop,page: int = 1,back_btn=None):
@@ -93,11 +97,15 @@ async def product_remove(callback_query: types.CallbackQuery, product: Product, 
 
 
 @callback_manager.callback_handler()
-async def product_detail(callback_query: types.CallbackQuery, element: Product,back_btn):
+async def product_detail(callback_query: types.CallbackQuery, element: Product, back_btn):
+    await callback_query.message.edit_text(
+        f"Вы выбрали {element.name} ценой {element.price}",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[back_btn]]
+        )
+    )
 
-    await callback_query.message.edit_text(f"Вы выбрали {element.name} ценой {element.price}",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[back_btn]]))
 
-# Хендлер для команды /start
 @dp.message(Command('start'))
 @dp.callback_query(lambda x:x.data=='/start')
 async def start_command(event: types.Message | types.CallbackQuery):
