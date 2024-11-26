@@ -4,13 +4,18 @@ import random
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup
+from dotenv import load_dotenv
+
 from aiogram_callback_manager import AsyncCallbackManager
+
+
+load_dotenv()
 
 API_TOKEN = os.environ['API_TOKEN']
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
-callback_manager = AsyncCallbackManager(use_json=False)
+callback_manager = AsyncCallbackManager(use_json=True)
 dp.include_router(callback_manager.router)
 asyncio.get_event_loop().run_until_complete(callback_manager.init_db())
 

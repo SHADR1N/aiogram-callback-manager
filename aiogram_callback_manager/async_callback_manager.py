@@ -3,6 +3,7 @@ import functools
 import inspect
 import traceback
 import uuid
+from dataclasses import is_dataclass, asdict
 from math import ceil
 
 from aiogram import Router, types
@@ -19,37 +20,45 @@ from .base_db_storage import SQLiteStorage,CallbackDataStorage
 
 
 class AsyncCallbackManager:
-    def __init__(self, use_json: bool = False,storage:CallbackDataStorage=SQLiteStorage('callback_data.db')):
+    def __init__(
+            self,
+            use_json: bool = False,
+            storage: CallbackDataStorage = SQLiteStorage('callback_data.db')
+    ):
         """
               Инициализация менеджера асинхронных callback'ов.
 
               :param use_json: Использовать JSON для сериализации данных.
               :param storage: Экземпляр хранилища для callback данных.
-              """
+        """
+
         self.router = Router()
         self.use_json = use_json
         self._handlers = {}
         self.storage=storage
+
         # Регистрация основного хендлера
         self.router.callback_query.register(self.main_callback_handler, lambda c: c.data and c.data.startswith("cb_"))
         async def noop_callback(callback_query: CallbackQuery):
             await callback_query.answer()
         self.router.callback_query.register(noop_callback, lambda c: c.data == "noop")
 
-
     async def init_db(self):
         await self.storage.init_db()
-
 
     async def _save_callback_data(self, data: Dict[str, Any]) -> str:
         # Сериализация данных
         if self.use_json:
+            if is_dataclass(data):
+                data = asdict(data)
             data_bytes = json.dumps(data).encode()
         else:
             data_bytes = pickle.dumps(data)
+
         # Создание хэша длиной 64 символа
         data_hash =  hashlib.md5(data_bytes).hexdigest()
         timestamp = time.time()
+
         # Сохранение в базу данных
         await self.storage.save(data_hash,data_bytes,timestamp)
         return data_hash
@@ -72,14 +81,17 @@ class AsyncCallbackManager:
     async def main_callback_handler(self, callback_query: CallbackQuery,callback_data=None):
         if not callback_data :
             callback_data = callback_query.data
+
         if not callback_data.startswith("cb_"):
             return  # Не обрабатываем callback_data, не относящиеся к нашему модулю
+
         data_hash = callback_data[3:]  # Убираем префикс "cb_"
         # Загрузка данных из базы по хэшу
         data = await self._load_callback_data(data_hash)
         if data is None:
             await callback_query.answer("Данные устарели или недействительны.", show_alert=True)
             return
+
         handler_id = data.get('handler_id')
         handler = self._handlers.get(handler_id)
         if handler is None:
