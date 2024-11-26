@@ -23,7 +23,7 @@ class AsyncCallbackManager:
     def __init__(
             self,
             use_json: bool = False,
-            storage: CallbackDataStorage = SQLiteStorage('callback_data.db')
+            storage: CallbackDataStorage = None
     ):
         """
               Инициализация менеджера асинхронных callback'ов.
@@ -31,6 +31,11 @@ class AsyncCallbackManager:
               :param use_json: Использовать JSON для сериализации данных.
               :param storage: Экземпляр хранилища для callback данных.
         """
+        if storage is None:
+            if use_json is True:
+                storage = SQLiteStorage('json_callback_data.db')
+            else:
+                storage = SQLiteStorage('pickle_callback_data.db')
 
         self.router = Router()
         self.use_json = use_json
