@@ -54,7 +54,7 @@ class AsyncCallbackManager:
     async def init_db(self):
         await self.storage.init_db()
 
-    async def _save_callback_data(self, data: Dict[str, Any]) -> str:
+    async def _save_callback_data(self, data: Dict[str, Any], user_id: int) -> str:
         # Сериализация данных
         if self.use_json:
             if is_dataclass(data):
@@ -68,11 +68,11 @@ class AsyncCallbackManager:
         timestamp = time.time()
 
         # Сохранение в базу данных
-        await self.storage.save(data_hash, data_bytes, timestamp)
+        await self.storage.save(data_hash, data_bytes, timestamp, user_id)
         return data_hash
 
-    async def _load_callback_data(self, data_hash: str) -> Optional[Dict[str, Any]]:
-        data_bytes = await self.storage.load(data_hash)
+    async def _load_callback_data(self, data_hash: str, user_id: int) -> Optional[Dict[str, Any]]:
+        data_bytes = await self.storage.load(data_hash, user_id)
         if data_bytes is not None:
             if self.use_json:
                 data = json.loads(data_bytes.decode())
@@ -95,7 +95,7 @@ class AsyncCallbackManager:
 
         data_hash = callback_data[3:]  # Убираем префикс "cb_"
         # Загрузка данных из базы по хэшу
-        data = await self._load_callback_data(data_hash)
+        data = await self._load_callback_data(data_hash, callback_query.from_user.id)
         if data is None:
             await callback_query.answer(MockMessage.DataInvalid, show_alert=True)
             return
@@ -104,8 +104,6 @@ class AsyncCallbackManager:
         handler = self._handlers.get(handler_id)
 
         if handler is None:
-            print(self._handlers)
-            print(handler_id)
             await callback_query.answer(MockMessage.HandlerNotFound, show_alert=True)
             return
 
@@ -152,6 +150,16 @@ class AsyncCallbackManager:
         return hashlib.md5(func_name.encode()).hexdigest()
 
     @staticmethod
+    def _extract_user_id(user_data):
+        if not user_data:
+            raise TypeError("Not implemented type")
+        if isinstance(user_data, int):
+            return user_data
+        elif isinstance(user_data, (types.Message, types.CallbackQuery)):
+            return user_data.from_user.id
+        raise TypeError("Not implemented type")
+
+    @staticmethod
     def _extract_callback_data(back_btn):
         if not back_btn:
             return None
@@ -169,6 +177,7 @@ class AsyncCallbackManager:
             self,
             text: str,
             func: Union[str, Callable],
+            user_data: Union[int, types.Message | types.CallbackQuery],
             back_btn: Optional[str | types.CallbackQuery | types.Message | InlineKeyboardButton] = None,
             *args,
             **kwargs
@@ -178,6 +187,7 @@ class AsyncCallbackManager:
 
               :param text: Текст на кнопке.
               :param func: Функция-обработчик или ее имя.
+              :param user_data: ID пользователя телеграм
               :param back_btn: Кнопка "Назад" или данные для нее.
               :return: Экземпляр InlineKeyboardButton.
         """
@@ -188,9 +198,9 @@ class AsyncCallbackManager:
             'handler_id': self._generate_handler_id(func if isinstance(func, str) else func.__name__),
             'args': args,
             'kwargs': kwargs,
-            'back_btn': self._extract_callback_data(back_btn)
+            'back_btn': self._extract_callback_data(back_btn),
         }
-        data_hash = await self._save_callback_data(data)
+        data_hash = await self._save_callback_data(data, self._extract_user_id(user_data))
         callback_data = f"cb_{data_hash}"
         return InlineKeyboardButton(text=text, callback_data=callback_data)
 
@@ -199,6 +209,7 @@ class AsyncCallbackManager:
             objects: List,
             display_func: Callable,
             button_func: Callable,
+            user_data: Union[int, types.Message | types.CallbackQuery],
             text_func: Callable = str,
             objects_per_page=5,
             page=1,
@@ -206,7 +217,7 @@ class AsyncCallbackManager:
             back_btn: Optional[str | CallbackQuery | types.Message] = None,
             *args,
             **kwargs
-    ) -> List[InlineKeyboardMarkup]:
+    ) -> List[InlineKeyboardButton]:
         keyboards = []
 
         current_objects = objects[(page - 1) * objects_per_page:page * objects_per_page]
@@ -216,6 +227,7 @@ class AsyncCallbackManager:
                 total_pages=ceil(len(objects) / objects_per_page),
                 current_page=page,
                 back_btn=back_btn,
+                user_data=user_data,
                 *args,
                 **kwargs
             )
@@ -231,6 +243,7 @@ class AsyncCallbackManager:
                         text=text_func(obj),
                         func=button_func,
                         back_btn=back_btn,
+                        user_data=user_data,
                         *args,
                         **kwargs_copy
                     )
@@ -251,6 +264,7 @@ class AsyncCallbackManager:
             func: Callable,
             total_pages: int,
             current_page: int,
+            user_data: Union[int, types.Message | types.CallbackQuery],
             back_btn: Optional[str] = None,
             max_buttons=5,
             **kwargs
@@ -282,6 +296,7 @@ class AsyncCallbackManager:
                 page_button = await self.create_button(
                     text=str(page),
                     func=func,
+                    user_data=user_data,
                     *args,
                     **kwargs_copy
                 )

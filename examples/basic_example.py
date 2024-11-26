@@ -36,7 +36,7 @@ products = [Product(name=f"Товар {i}", price=random.randint(100, 1000000)) 
 
 @dp.message(Command('start'))
 async def start_command(message: types.Message, state: FSMContext):
-    btn = await callback_manager.create_button('Товары', "product_list")
+    btn = await callback_manager.create_button('Товары', "product_list", message)
     await message.answer('Меню', reply_markup=InlineKeyboardMarkup(inline_keyboard=[[btn]]))
 
 
