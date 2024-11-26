@@ -15,7 +15,7 @@ import time
 import json
 from typing import Any, Callable, Dict, Optional, List, Union
 
-from .base_db_storage import SQLiteStorage,CallbackDataStorage
+from .base_db_storage import SQLiteStorage, CallbackDataStorage
 from .messages import MockMessage
 
 
@@ -40,12 +40,14 @@ class AsyncCallbackManager:
         self.router = Router()
         self.use_json = use_json
         self._handlers = {}
-        self.storage=storage
+        self.storage = storage
 
         # Регистрация основного хендлера
         self.router.callback_query.register(self.main_callback_handler, lambda c: c.data and c.data.startswith("cb_"))
+
         async def noop_callback(callback_query: CallbackQuery):
             await callback_query.answer()
+
         self.router.callback_query.register(noop_callback, lambda c: c.data == "noop")
         asyncio.get_event_loop().run_until_complete(self.init_db())
 
@@ -62,11 +64,11 @@ class AsyncCallbackManager:
             data_bytes = pickle.dumps(data)
 
         # Создание хэша длиной 64 символа
-        data_hash =  hashlib.md5(data_bytes).hexdigest()
+        data_hash = hashlib.md5(data_bytes).hexdigest()
         timestamp = time.time()
 
         # Сохранение в базу данных
-        await self.storage.save(data_hash,data_bytes,timestamp)
+        await self.storage.save(data_hash, data_bytes, timestamp)
         return data_hash
 
     async def _load_callback_data(self, data_hash: str) -> Optional[Dict[str, Any]]:
@@ -85,7 +87,7 @@ class AsyncCallbackManager:
         return await self.storage.clean_old(expiry_time)
 
     async def main_callback_handler(self, callback_query: CallbackQuery, callback_data=None):
-        if not callback_data :
+        if not callback_data:
             callback_data = callback_query.data
 
         if not callback_data.startswith("cb_"):
@@ -141,6 +143,7 @@ class AsyncCallbackManager:
             # Сохраняем обработчик в словаре с использованием handler_id
             self._handlers[handler_id] = wrapper
             return wrapper
+
         return decorator
 
     def _generate_handler_id(self, func_name: Callable):
@@ -166,7 +169,7 @@ class AsyncCallbackManager:
             self,
             text: str,
             func: Union[str, Callable],
-            back_btn: Optional[str|types.CallbackQuery|types.Message|InlineKeyboardButton] = None,
+            back_btn: Optional[str | types.CallbackQuery | types.Message | InlineKeyboardButton] = None,
             *args,
             **kwargs
     ) -> InlineKeyboardButton:
@@ -182,7 +185,7 @@ class AsyncCallbackManager:
         kwargs = {key: asdict(value) if is_dataclass(value) else value for key, value in kwargs.items()}
 
         data = {
-            'handler_id': self._generate_handler_id(func if isinstance(func ,str) else func.__name__),
+            'handler_id': self._generate_handler_id(func if isinstance(func, str) else func.__name__),
             'args': args,
             'kwargs': kwargs,
             'back_btn': self._extract_callback_data(back_btn)
@@ -249,13 +252,13 @@ class AsyncCallbackManager:
             total_pages: int,
             current_page: int,
             back_btn: Optional[str] = None,
-            max_buttons = 5,
+            max_buttons=5,
             **kwargs
     ) -> List[InlineKeyboardButton]:
         buttons = []
 
         # Определяем диапазон страниц для отображения
-        max_buttons=min(max_buttons,total_pages)
+        max_buttons = min(max_buttons, total_pages)
         half_range = max_buttons // 2
         start_page = max(1, current_page - half_range)
         end_page = min(total_pages, current_page + half_range)
@@ -285,5 +288,3 @@ class AsyncCallbackManager:
                 buttons.append(page_button)
 
         return buttons
-
-

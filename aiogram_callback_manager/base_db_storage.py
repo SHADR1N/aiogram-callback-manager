@@ -15,24 +15,25 @@ class CallbackDataStorage:
 
     async def clean_old(self, expiry_time: int):
         raise NotImplementedError
+
     async def init_db(self):
-       raise NotImplementedError
+        raise NotImplementedError
+
 
 class SQLiteStorage(CallbackDataStorage):
     def __init__(self, db_path: str):
         self.db_path = db_path
         self._db_lock = asyncio.Lock()
-        self.connection:Optional[Connection]=None
+        self.connection: Optional[Connection] = None
 
     async def clean_old(self, expiry_time: int):
         current_time = time.time()
         async with self._db_lock:
             await self.connection.execute(
-                    "DELETE FROM callback_data WHERE ? - created_at > ?",
-                    (current_time, expiry_time)
-                )
+                "DELETE FROM callback_data WHERE ? - created_at > ?",
+                (current_time, expiry_time)
+            )
             await self.connection.commit()
-
 
     async def init_db(self):
         self.connection = await aiosqlite.connect(self.db_path)
