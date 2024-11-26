@@ -13,8 +13,7 @@ import pickle
 import hashlib
 import time
 import json
-from typing import Any, Callable, Dict, Optional, List
-
+from typing import Any, Callable, Dict, Optional, List, Union
 
 from .base_db_storage import SQLiteStorage,CallbackDataStorage
 from .messages import MockMessage
@@ -57,7 +56,7 @@ class AsyncCallbackManager:
         if self.use_json:
             if is_dataclass(data):
                 data = asdict(data)
-            data_bytes = json.dumps(data).encode()
+            data_bytes = json.dumps(data, ensure_ascii=False).encode()
         else:
             data_bytes = pickle.dumps(data)
 
@@ -71,7 +70,7 @@ class AsyncCallbackManager:
 
     async def _load_callback_data(self, data_hash: str) -> Optional[Dict[str, Any]]:
         data_bytes = await self.storage.load(data_hash)
-        if data_bytes:
+        if data_bytes is not None:
             if self.use_json:
                 data = json.loads(data_bytes.decode())
             else:
@@ -84,7 +83,7 @@ class AsyncCallbackManager:
         current_time = time.time()
         return await self.storage.clean_old(expiry_time)
 
-    async def main_callback_handler(self, callback_query: CallbackQuery,callback_data=None):
+    async def main_callback_handler(self, callback_query: CallbackQuery, callback_data=None):
         if not callback_data :
             callback_data = callback_query.data
 
@@ -100,9 +99,13 @@ class AsyncCallbackManager:
 
         handler_id = data.get('handler_id')
         handler = self._handlers.get(handler_id)
+
         if handler is None:
+            print(self._handlers)
+            print(handler_id)
             await callback_query.answer(MockMessage.HandlerNotFound, show_alert=True)
             return
+
         # Получение аргументов
         args = data.get('args', [])
         kwargs = data.get('kwargs', {})
@@ -119,7 +122,7 @@ class AsyncCallbackManager:
             await callback_query.answer(MockMessage.RequestProcessingError, show_alert=True)
 
     def register_handler(self, func: Callable):
-        handler_id = self._generate_handler_id()
+        handler_id = self._generate_handler_id(func)
         func.handler_id = handler_id
         self._handlers[handler_id] = func
         return func
@@ -131,21 +134,18 @@ class AsyncCallbackManager:
                 await func(callback_query, *args, **kwargs)
 
             # Генерируем уникальный идентификатор для обработчика
-            handler_id = self._generate_handler_id()
+            handler_id = self._generate_handler_id(func)
             wrapper.handler_id = handler_id
 
             # Сохраняем обработчик в словаре с использованием handler_id
             self._handlers[handler_id] = wrapper
             return wrapper
-
         return decorator
 
-    def _generate_handler_id(self):
-        while True:
-            handler_id = str(uuid.uuid4())
-            if handler_id not in self._handlers:
-                break
-        return handler_id
+    def _generate_handler_id(self, func_name: Callable):
+        if not isinstance(func_name, str):
+            func_name = func_name.__name__
+        return hashlib.md5(func_name.encode()).hexdigest()
 
     @staticmethod
     def _extract_callback_data(back_btn):
@@ -164,7 +164,7 @@ class AsyncCallbackManager:
     async def create_button(
             self,
             text: str,
-            func: Callable,
+            func: Union[str, Callable],
             back_btn: Optional[str|types.CallbackQuery|types.Message|InlineKeyboardButton] = None,
             *args,
             **kwargs
@@ -173,13 +173,15 @@ class AsyncCallbackManager:
               Создает InlineKeyboardButton с обработчиком.
 
               :param text: Текст на кнопке.
-              :param func: Функция-обработчик.
+              :param func: Функция-обработчик или ее имя.
               :param back_btn: Кнопка "Назад" или данные для нее.
               :return: Экземпляр InlineKeyboardButton.
         """
+        args = [asdict(arg) if is_dataclass(arg) else arg for arg in args]
+        kwargs = {key: asdict(value) if is_dataclass(value) else value for key, value in kwargs.items()}
 
         data = {
-            'handler_id': getattr(func, 'handler_id', None),
+            'handler_id': self._generate_handler_id(func if isinstance(func ,str) else func.__name__),
             'args': args,
             'kwargs': kwargs,
             'back_btn': self._extract_callback_data(back_btn)
