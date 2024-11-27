@@ -9,10 +9,10 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 
-from aiogram_callback_manager import AsyncCallbackManager
+import aiogram_callback_manager
 
 load_dotenv()
 
@@ -20,7 +20,7 @@ API_TOKEN = os.environ['API_TOKEN']
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
-callback_manager = AsyncCallbackManager(use_json=False)
+callback_manager = aiogram_callback_manager.AsyncCallbackManager(use_json=False)
 dp.include_router(callback_manager.router)
 
 
@@ -37,7 +37,13 @@ products = [Product(name=f"Товар {i}", price=random.randint(100, 1000000)) 
 @dp.message(Command('start'))
 async def start_command(message: types.Message, state: FSMContext):
     btn = await callback_manager.create_button('Товары', "product_list", message)
-    await message.answer('Меню', reply_markup=InlineKeyboardMarkup(inline_keyboard=[[btn]]))
+    data1 = InlineKeyboardButton(text="1", callback_data="1")
+    await message.answer('Меню', reply_markup=InlineKeyboardMarkup(inline_keyboard=[[btn, data1]]))
+
+
+@callback_manager.callback_handler()
+async def product_list_example(callback_query: types.CallbackQuery, *args):
+    print("product", args)
 
 
 @callback_manager.callback_handler()
@@ -54,7 +60,8 @@ async def product_list(callback_query: types.CallbackQuery, page: int = 1, back_
             await callback_manager.create_button(
                 text=product.name,
                 func=product_detail,
-                product=product
+                product=product,
+                user_data=callback_query
             )
         ] for product in current_products
     ]
@@ -63,7 +70,8 @@ async def product_list(callback_query: types.CallbackQuery, page: int = 1, back_
         func=product_list,
         total_pages=total_pages,
         current_page=page,
-        back_btn="Back to back"
+        back_btn="Back to back",
+        user_data=callback_query
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons + [pagination_buttons])
     await callback_query.message.edit_text(text=f"Страница {page} из {total_pages}", reply_markup=keyboard)

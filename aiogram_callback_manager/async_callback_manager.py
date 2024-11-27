@@ -7,6 +7,7 @@ from dataclasses import is_dataclass, asdict
 from math import ceil
 
 from aiogram import Router, types
+from aiogram.dispatcher.event.handler import FilterObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from functools import wraps
 import pickle
@@ -16,6 +17,7 @@ import json
 from typing import Any, Callable, Dict, Optional, List, Union
 
 from .base_db_storage import SQLiteStorage, CallbackDataStorage
+from .logger import logger
 from .messages import MockMessage
 
 
@@ -43,7 +45,10 @@ class AsyncCallbackManager:
         self.storage = storage
 
         # Регистрация основного хендлера
-        self.router.callback_query.register(self.main_callback_handler, lambda c: c.data and c.data.startswith("cb_"))
+        self.router.callback_query.register(
+            self.main_callback_handler,
+            lambda c: c.data and c.data.startswith("cb_")
+        )
 
         async def noop_callback(callback_query: CallbackQuery):
             await callback_query.answer()
@@ -86,7 +91,9 @@ class AsyncCallbackManager:
         current_time = time.time()
         return await self.storage.clean_old(expiry_time)
 
-    async def main_callback_handler(self, callback_query: CallbackQuery, callback_data=None):
+    async def main_callback_handler(self, callback_query: CallbackQuery, callback_data=None, *args):
+        logger.debug(f"New request with callback data \"{callback_query.data}\"")
+
         if not callback_data:
             callback_data = callback_query.data
 
@@ -118,7 +125,7 @@ class AsyncCallbackManager:
             if back_btn_data and 'back_btn' in t.parameters:
                 kwargs['back_btn'] = InlineKeyboardButton(text='Назад', callback_data=back_btn_data)
             await handler(callback_query, *args, **kwargs)
-        except Exception as e:
+        except Exception as _:
             traceback.print_exc()
             await callback_query.answer(MockMessage.RequestProcessingError, show_alert=True)
 
@@ -131,8 +138,8 @@ class AsyncCallbackManager:
     def callback_handler(self):
         def decorator(func: Callable):
             @wraps(func)
-            async def wrapper(callback_query: CallbackQuery, *args, **kwargs):
-                await func(callback_query, *args, **kwargs)
+            async def wrapper(callback_query: CallbackQuery, *filters, **kwargs):
+                await func(callback_query, *filters, **kwargs)
 
             # Генерируем уникальный идентификатор для обработчика
             handler_id = self._generate_handler_id(func)
@@ -140,6 +147,7 @@ class AsyncCallbackManager:
 
             # Сохраняем обработчик в словаре с использованием handler_id
             self._handlers[handler_id] = wrapper
+            logger.debug(f"Register new callback handler is {func.__name__}")
             return wrapper
 
         return decorator
