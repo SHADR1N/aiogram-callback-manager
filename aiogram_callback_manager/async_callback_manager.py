@@ -1,20 +1,17 @@
 import asyncio
-import functools
+import hashlib
 import inspect
+import json
+import pickle
+import time
 import traceback
-import uuid
 from dataclasses import is_dataclass, asdict
+from functools import wraps
 from math import ceil
+from typing import Any, Callable, Dict, Optional, List, Union
 
 from aiogram import Router, types
-from aiogram.dispatcher.event.handler import FilterObject
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
-from functools import wraps
-import pickle
-import hashlib
-import time
-import json
-from typing import Any, Callable, Dict, Optional, List, Union
+from aiogram.types import CallbackQuery, InlineKeyboardButton
 
 from .base_db_storage import SQLiteStorage, CallbackDataStorage
 from .logger import logger
@@ -43,12 +40,6 @@ class AsyncCallbackManager:
         self.use_json = use_json
         self._handlers = {}
         self.storage = storage
-
-        # Регистрация основного хендлера
-        self.router.callback_query.register(
-            self.main_callback_handler,
-            lambda c: c.data and c.data.startswith("cb_")
-        )
 
         async def noop_callback(callback_query: CallbackQuery):
             await callback_query.answer()
@@ -108,11 +99,12 @@ class AsyncCallbackManager:
             return
 
         handler_id = data.get('handler_id')
-        handler = self._handlers.get(handler_id)
-
-        if handler is None:
+        respose = self._handlers.get(handler_id)
+        if respose is None:
             await callback_query.answer(MockMessage.HandlerNotFound, show_alert=True)
             return
+
+        handler = respose["func"]
 
         # Получение аргументов
         args = data.get('args', [])
@@ -129,13 +121,16 @@ class AsyncCallbackManager:
             traceback.print_exc()
             await callback_query.answer(MockMessage.RequestProcessingError, show_alert=True)
 
-    def register_handler(self, func: Callable):
+    def register_handler(self, func: Callable, *filters):
         handler_id = self._generate_handler_id(func)
-        func.handler_id = handler_id
-        self._handlers[handler_id] = func
+        self._handlers[handler_id] = {
+            "func": func,
+            "filters": list(filters) + [lambda c: c.data and c.data.startswith("cb_")]
+        }
+        self.router.callback_query.register(self.main_callback_handler, *filters)
         return func
 
-    def callback_handler(self):
+    def callback_handler(self, *filters):
         def decorator(func: Callable):
             @wraps(func)
             async def wrapper(callback_query: CallbackQuery, *filters, **kwargs):
@@ -143,10 +138,13 @@ class AsyncCallbackManager:
 
             # Генерируем уникальный идентификатор для обработчика
             handler_id = self._generate_handler_id(func)
-            wrapper.handler_id = handler_id
 
             # Сохраняем обработчик в словаре с использованием handler_id
-            self._handlers[handler_id] = wrapper
+            self._handlers[handler_id] = {
+                "func": func,
+                "filters": list(filters) + [lambda c: c.data and c.data.startswith("cb_")]
+            }
+            self.router.callback_query.register(self.main_callback_handler, *filters)
             logger.debug(f"Register new callback handler is {func.__name__}")
             return wrapper
 
@@ -199,8 +197,9 @@ class AsyncCallbackManager:
               :param back_btn: Кнопка "Назад" или данные для нее.
               :return: Экземпляр InlineKeyboardButton.
         """
-        args = [asdict(arg) if is_dataclass(arg) else arg for arg in args]
-        kwargs = {key: asdict(value) if is_dataclass(value) else value for key, value in kwargs.items()}
+        if self.use_json is True:
+            args = [asdict(arg) if is_dataclass(arg) else arg for arg in args]
+            kwargs = {key: asdict(value) if is_dataclass(value) else value for key, value in kwargs.items()}
 
         data = {
             'handler_id': self._generate_handler_id(func if isinstance(func, str) else func.__name__),
