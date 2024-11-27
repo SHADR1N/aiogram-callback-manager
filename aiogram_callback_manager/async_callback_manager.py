@@ -53,7 +53,7 @@ class AsyncCallbackManager:
         asyncio.get_event_loop().run_until_complete(self.init_db())
 
         if auto_clean is True:
-            asyncio.get_event_loop().run_until_complete(self._auto_clean())
+            asyncio.get_event_loop().create_task(self._auto_clean())
 
     async def init_db(self):
         await self.storage.init_db()
@@ -86,11 +86,9 @@ class AsyncCallbackManager:
         return None
 
     async def _auto_clean(self):
-        async def loop():
-            while True:
-                await self.clean_old_callback_data(self.expiry_time)
-                await asyncio.sleep(self.pause_between_cleaning)
-        _ = asyncio.create_task(loop())
+        while True:
+            await self.clean_old_callback_data(self.expiry_time)
+            await asyncio.sleep(self.pause_between_cleaning)
 
     async def clean_old_callback_data(self, expiry_time: int = 3600):
         # Удаление записей старше expiry_time секунд
