@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='aiogram-callback-manager',
-    version='0.1.0',
+    version='0.1.1',
     author='EvilMathHippy',
     author_email='careviolan@gmail.com',
     description='Асинхронный менеджер callback для aiogram.',
