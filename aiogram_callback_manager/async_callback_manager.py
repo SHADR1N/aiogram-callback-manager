@@ -22,7 +22,10 @@ class AsyncCallbackManager:
     def __init__(
             self,
             use_json: bool = False,
-            storage: CallbackDataStorage = None
+            storage: CallbackDataStorage = None,
+            auto_clean: bool = False,
+            expiry_time: int = 3600,
+            pause_between_cleaning: int = 3600
     ):
         """
               Инициализация менеджера асинхронных callback'ов.
@@ -36,6 +39,8 @@ class AsyncCallbackManager:
             else:
                 storage = SQLiteStorage('pickle_callback_data.db')
 
+        self.expiry_time = expiry_time
+        self.pause_between_cleaning = pause_between_cleaning
         self.router = Router()
         self.use_json = use_json
         self._handlers = {}
@@ -46,6 +51,9 @@ class AsyncCallbackManager:
 
         self.router.callback_query.register(noop_callback, lambda c: c.data == "noop")
         asyncio.get_event_loop().run_until_complete(self.init_db())
+
+        if auto_clean is True:
+            asyncio.get_event_loop().run_until_complete(self._auto_clean())
 
     async def init_db(self):
         await self.storage.init_db()
@@ -76,6 +84,13 @@ class AsyncCallbackManager:
                 data = pickle.loads(data_bytes, encoding="utf-8")
             return data
         return None
+
+    async def _auto_clean(self):
+        async def loop():
+            while True:
+                await self.clean_old_callback_data(self.expiry_time)
+                await asyncio.sleep(self.pause_between_cleaning)
+        _ = asyncio.create_task(loop())
 
     async def clean_old_callback_data(self, expiry_time: int = 3600):
         # Удаление записей старше expiry_time секунд
